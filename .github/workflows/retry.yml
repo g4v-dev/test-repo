@@ -1,0 +1,43 @@
+name: Retry
+
+on:
+  issue_comment:
+    types:
+      - created
+
+jobs:
+  retry:
+    name: Retry failed workflows
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '!retry')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Get PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "${{ github.event.issue.pull_request.url }}" --jq '.head.sha')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Re-run failed workflow runs for this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          echo "Looking for failed/cancelled runs on commit $SHA"
+          run_ids=$(gh api \
+            "repos/$REPO/actions/runs?head_sha=$SHA" \
+            --jq '.workflow_runs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .id')
+
+          if [ -z "$run_ids" ]; then
+            echo "No failed or cancelled workflow runs found for commit $SHA."
+          else
+            for run_id in $run_ids; do
+              echo "Re-running workflow run $run_id"
+              gh api --method POST "repos/$REPO/actions/runs/$run_id/rerun-failed-jobs"
+            done
+          fi
