@@ -41,3 +41,60 @@ jobs:
               gh api --method POST "repos/$REPO/actions/runs/$run_id/rerun-failed-jobs"
             done
           fi
+
+  force-check:
+    name: Force check status
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
+    steps:
+      - name: Get PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "${{ github.event.issue.pull_request.url }}" --jq '.head.sha')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Force status from PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          has_pass=0
+          has_fail=0
+
+          if echo "$COMMENT" | grep -qE '(^|[[:space:]])!pass($|[[:space:]])'; then
+            has_pass=1
+          fi
+
+          if echo "$COMMENT" | grep -qE '(^|[[:space:]])!fail($|[[:space:]])'; then
+            has_fail=1
+          fi
+
+          if [ "$has_pass" -eq 1 ] && [ "$has_fail" -eq 1 ]; then
+            echo "Comment contains both !pass and !fail; refusing ambiguous command."
+            exit 1
+          fi
+
+          if [ "$has_pass" -eq 0 ] && [ "$has_fail" -eq 0 ]; then
+            echo "No force-check command found; skipping."
+            exit 0
+          fi
+
+          if [ "$has_fail" -eq 1 ]; then
+            state="failure"
+            description="Forced to fail by !fail comment command"
+          else
+            state="success"
+            description="Forced to pass by !pass comment command"
+          fi
+
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state="$state" \
+            -f context="forced/pr-comment" \
+            -f description="$description"
