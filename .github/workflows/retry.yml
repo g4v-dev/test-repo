@@ -44,7 +44,7 @@ jobs:
 
   force-check:
     name: Force check status
-    if: github.event.issue.pull_request && (contains(github.event.comment.body, '!pass') || contains(github.event.comment.body, '!fail'))
+    if: github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
       statuses: write
@@ -65,7 +65,28 @@ jobs:
           SHA: ${{ steps.pr.outputs.sha }}
           COMMENT: ${{ github.event.comment.body }}
         run: |
-          if echo "$COMMENT" | grep -q '!fail'; then
+          has_pass=0
+          has_fail=0
+
+          if echo "$COMMENT" | grep -qE '(^|[[:space:]])!pass($|[[:space:]])'; then
+            has_pass=1
+          fi
+
+          if echo "$COMMENT" | grep -qE '(^|[[:space:]])!fail($|[[:space:]])'; then
+            has_fail=1
+          fi
+
+          if [ "$has_pass" -eq 1 ] && [ "$has_fail" -eq 1 ]; then
+            echo "Comment contains both !pass and !fail; refusing ambiguous command."
+            exit 1
+          fi
+
+          if [ "$has_pass" -eq 0 ] && [ "$has_fail" -eq 0 ]; then
+            echo "No force-check command found; skipping."
+            exit 0
+          fi
+
+          if [ "$has_fail" -eq 1 ]; then
             state="failure"
             description="Forced to fail by !fail comment command"
           else
