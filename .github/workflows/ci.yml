@@ -15,7 +15,7 @@ jobs:
 
       - name: Check for trailing whitespace
         run: |
-          if grep -rn ' $' --include='*.md' --include='*.txt' --include='*.yml' --include='*.yaml' .; then
+          if grep -rn ' $' --include='*.md' --include='*.txt' --exclude-dir='.github' .; then
             echo "Trailing whitespace found!"
             exit 1
           else

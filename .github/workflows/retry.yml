@@ -31,7 +31,7 @@ jobs:
           echo "Looking for failed/cancelled runs on commit $SHA"
           run_ids=$(gh api \
             "repos/$REPO/actions/runs?head_sha=$SHA" \
-            --jq '.workflow_runs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .id')
+            --jq '.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled")) | .id')
 
           if [ -z "$run_ids" ]; then
             echo "No failed or cancelled workflow runs found for commit $SHA."
