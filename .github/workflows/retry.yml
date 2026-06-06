@@ -41,3 +41,39 @@ jobs:
               gh api --method POST "repos/$REPO/actions/runs/$run_id/rerun-failed-jobs"
             done
           fi
+
+  force-check:
+    name: Force check status
+    if: github.event.issue.pull_request && (contains(github.event.comment.body, '!pass') || contains(github.event.comment.body, '!fail'))
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
+    steps:
+      - name: Get PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "${{ github.event.issue.pull_request.url }}" --jq '.head.sha')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Force status from PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          if echo "$COMMENT" | grep -q '!fail'; then
+            state="failure"
+            description="Forced to fail by !fail comment command"
+          else
+            state="success"
+            description="Forced to pass by !pass comment command"
+          fi
+
+          gh api --method POST "repos/$REPO/statuses/$SHA" \
+            -f state="$state" \
+            -f context="forced/pr-comment" \
+            -f description="$description"
